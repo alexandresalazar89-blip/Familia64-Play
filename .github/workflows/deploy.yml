@@ -1,0 +1,83 @@
+name: Publish Familia64 Play
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout deployment repo
+        uses: actions/checkout@v4
+
+      - name: Set up Godot 4.7.2
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          use-dotnet: false
+          include-templates: true
+
+      - name: Generate public Web shell
+        run: |
+          set -euo pipefail
+          rm -rf site
+          mkdir -p site
+          godot --headless --path shell --export-release "Web" "$GITHUB_WORKSPACE/site/index.html"
+
+      - name: Install approved private-game payload
+        run: |
+          set -euo pipefail
+          base64 --decode payload/index.pck.b64 > site/index.pck
+          test "$(stat -c%s site/index.pck)" = "49880"
+          test "$(sha256sum site/index.pck | cut -d' ' -f1)" = "eac27afec9fc0315340207c409ca0c96a0d153cf3d3d5b72c23675814dafacfd"
+
+      - name: Patch Web manifest sizes and verify engine
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("site/index.html")
+          s = p.read_text()
+          size = Path("site/index.pck").stat().st_size
+          s, n = re.subn(r'"index\.pck":\d+', f'"index.pck":{size}', s)
+          if n != 1:
+              raise SystemExit("Could not patch index.pck size in index.html")
+          p.write_text(s)
+          PY
+
+          test -f site/index.wasm
+          test -f site/index.js
+          touch site/.nojekyll
+
+          WASM_SHA="$(sha256sum site/index.wasm | cut -d' ' -f1)"
+          echo "Web engine SHA256: $WASM_SHA"
+          test "$WASM_SHA" = "fc74679e3b97f76878947fcd4fbe1268cbfa6188182a2e33bbc3f5dc9bfa57d0"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
