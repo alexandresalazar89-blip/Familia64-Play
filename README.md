@@ -2,4 +2,10 @@
 
 Public browser-playtest deployment for **Família 64**.
 
-The game source project remains private. This repository contains only the files needed to publish an approved Web build.
+Current published build: **POC 1 · 0.0.3-presentable**
+
+The game source project remains private. This repository contains only deployment material needed to publish an approved Web build.
+
+Play:
+
+https://alexandresalazar89-blip.github.io/Familia64-Play/
