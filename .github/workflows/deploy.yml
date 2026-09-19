@@ -1,4 +1,4 @@
-name: Publish Familia64 Play
+name: Publish Mundo à Porta HOME
 
 on:
   push:
@@ -14,6 +14,11 @@ permissions:
 concurrency:
   group: pages
   cancel-in-progress: true
+
+env:
+  HOME_PCK_SIZE: "1916356"
+  HOME_PCK_SHA256: "edfeeb8d65f6ae7147b2338e1d730a90af7595d1e07a0f5b56b639b380ef4407"
+  GODOT_WASM_SHA256: "fc74679e3b97f76878947fcd4fbe1268cbfa6188182a2e33bbc3f5dc9bfa57d0"
 
 jobs:
   build:
@@ -36,12 +41,15 @@ jobs:
           mkdir -p site
           godot --headless --path shell --export-release "Web" "$GITHUB_WORKSPACE/site/index.html"
 
-      - name: Install approved private-game payload
+      - name: Install accepted real HOME runtime
         run: |
           set -euo pipefail
-          base64 --decode payload/index.pck.b64 > site/index.pck
-          test "$(stat -c%s site/index.pck)" = "98816"
-          test "$(sha256sum site/index.pck | cut -d' ' -f1)" = "77397a7c36764e138c0d6b54cffb1c1206ea6d1e99a7eed03027d2f5d99b2df7"
+          PARTS=$(find payload/home -maxdepth 1 -type f -name 'part*.b64' | sort)
+          test "$(printf '%s\n' "$PARTS" | grep -c .)" = "13"
+          cat $PARTS | base64 --decode > site/index.pck
+          test "$(stat -c%s site/index.pck)" = "$HOME_PCK_SIZE"
+          test "$(sha256sum site/index.pck | cut -d' ' -f1)" = "$HOME_PCK_SHA256"
+          echo "REAL_HOME_PCK_OK"
 
       - name: Patch Web manifest sizes and verify engine
         run: |
@@ -49,13 +57,15 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import re
+
           p = Path("site/index.html")
-          s = p.read_text()
+          s = p.read_text(encoding="utf-8")
           size = Path("site/index.pck").stat().st_size
           s, n = re.subn(r'"index\.pck":\d+', f'"index.pck":{size}', s)
           if n != 1:
               raise SystemExit("Could not patch index.pck size in index.html")
-          p.write_text(s)
+          s = s.replace("<title>Familia64 Play</title>", "<title>Mundo à Porta — HOME</title>")
+          p.write_text(s, encoding="utf-8")
           PY
 
           test -f site/index.wasm
@@ -64,7 +74,66 @@ jobs:
 
           WASM_SHA="$(sha256sum site/index.wasm | cut -d' ' -f1)"
           echo "Web engine SHA256: $WASM_SHA"
-          test "$WASM_SHA" = "fc74679e3b97f76878947fcd4fbe1268cbfa6188182a2e33bbc3f5dc9bfa57d0"
+          test "$WASM_SHA" = "$GODOT_WASM_SHA256"
+
+          (
+            cd site
+            sha256sum index.* > SHA256SUMS.txt
+          )
+
+      - name: Browser smoke test accepted HOME build
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet selenium
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory site >/tmp/home-site.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+
+          for i in {1..30}; do
+            curl -fsS http://127.0.0.1:8765/index.html >/dev/null && break
+            sleep 0.5
+          done
+
+          python3 - <<'PY'
+          import time
+          from selenium import webdriver
+          from selenium.webdriver.support.ui import WebDriverWait
+
+          options = webdriver.ChromeOptions()
+          options.add_argument("--headless=new")
+          options.add_argument("--no-sandbox")
+          options.add_argument("--disable-dev-shm-usage")
+          options.add_argument("--use-gl=angle")
+          options.add_argument("--use-angle=swiftshader")
+          options.add_argument("--enable-webgl")
+          options.add_argument("--ignore-gpu-blocklist")
+          options.add_argument("--window-size=1280,720")
+          options.set_capability("goog:loggingPrefs", {"browser": "ALL"})
+
+          driver = webdriver.Chrome(options=options)
+          try:
+              driver.set_page_load_timeout(45)
+              driver.get("http://127.0.0.1:8765/index.html")
+              WebDriverWait(driver, 45).until(
+                  lambda d: d.execute_script(
+                      "return document.getElementById('status') === null"
+                  )
+              )
+              time.sleep(2)
+              canvas = driver.execute_script(
+                  "const c=document.getElementById('canvas');"
+                  "return c ? [c.width,c.height,c.clientWidth,c.clientHeight] : null;"
+              )
+              assert canvas and min(canvas) > 0, canvas
+              severe = [x for x in driver.get_log("browser") if x.get("level") == "SEVERE"]
+              if severe:
+                  for item in severe:
+                      print("BROWSER_SEVERE:", item)
+                  raise AssertionError(f"{len(severe)} severe browser errors")
+              print(f"REAL_HOME_PUBLIC_BROWSER_OK canvas={canvas}")
+          finally:
+              driver.quit()
+          PY
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -78,6 +147,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy accepted real HOME build
         id: deployment
         uses: actions/deploy-pages@v4
