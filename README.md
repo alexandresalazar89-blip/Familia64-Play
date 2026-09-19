@@ -2,7 +2,7 @@
 
 Public browser-playtest deployment for **Família 64**.
 
-Current published build: **POC 1 · 0.0.6-feedback**
+Current published build: **POC 1 · 0.0.7-lifecycle**
 
 The game source project remains private. This repository contains only deployment material needed to publish an approved Web build.
 

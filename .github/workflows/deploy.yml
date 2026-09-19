@@ -40,8 +40,8 @@ jobs:
         run: |
           set -euo pipefail
           base64 --decode payload/index.pck.b64 > site/index.pck
-          test "$(stat -c%s site/index.pck)" = "68648"
-          test "$(sha256sum site/index.pck | cut -d' ' -f1)" = "b674a05cd30c587b52de5ff0433e3fd4fc02e9475763581692ba12840f914748"
+          test "$(stat -c%s site/index.pck)" = "74256"
+          test "$(sha256sum site/index.pck | cut -d' ' -f1)" = "586ebc2c9a47638685c0b1b8297299b3dfb58c859a8c61c8d5021e60c0563a71"
 
       - name: Patch Web manifest sizes and verify engine
         run: |
